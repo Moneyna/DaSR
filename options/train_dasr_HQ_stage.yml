@@ -1,0 +1,158 @@
+# general settings
+name: DaSR_HQ_stage_256_wGAN
+model_type: DaSRModel
+scale: 4
+num_gpu: 1 # set num_gpu: 0 for cpu mode
+manual_seed: 0
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: HR_clean
+    type: PairedImageDataset
+    dataroot_gt: ../data/DF2K/HR
+    dataroot_lq: ../data/DF2K/HR
+    io_backend:
+      type: disk
+
+    gt_size: 256 
+    scale: 4
+    use_resize_crop: true
+    use_flip: true
+    use_rot: true
+
+    # data loader
+    use_shuffle: true
+    batch_size_per_gpu: &bsz 8
+    num_worker_per_gpu: 8
+    dataset_enlarge_ratio: 1
+
+    prefetch_mode: cpu
+    num_prefetch_queue: 32
+
+  val:
+    name: General_Image_Valid
+    type: PairedImageDataset
+    dataroot_gt: ../data/bicubic_val2/HR # 6 random images chosen from DIV2K_VAL
+    dataroot_lq: ../data/bicubic_val2/HR
+    io_backend:
+      type: disk
+
+# network structures
+network_g:
+  type: DaSR
+  in_nc: 3
+  out_nc: 3
+  upscale: 4
+  codebook_n: 256
+  codebook_dim: 256
+  max_down_ratio: 8
+  mlp_ratio: 4
+  num_heads: 8
+  nTRG: 0
+  nTAG: 6
+  channel_list: [64, 128, 256, 256]
+  dropout_r: 0.0
+  nMHA: 0
+  d_MHA: 4
+  window_size: 8
+  psN: 256
+  LQ_stage: false
+
+network_d:
+  type: UNetDiscriminatorSN
+  num_in_ch: 3
+
+# path
+path:
+  pretrain_network_g: ~
+  pretrain_network_d: ~
+  strict_load: false
+  resume_state: ~
+
+# training settings
+train:
+  optim_g:
+    type: Adam
+    lr: !!float 1e-4
+    weight_decay: 0
+    betas: [0.9, 0.99]
+  optim_d:
+    type: Adam
+    lr: !!float 4e-4
+    weight_decay: 0
+    betas: [0.9, 0.99]
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [50000,100000,150000,200000]
+    gamma: 1
+
+  total_iter: 200000
+  warmup_iter: -1  # no warm up
+
+  # losses
+  pixel_opt:
+    type: L1Loss
+    loss_weight: !!float 1
+    reduction: mean
+
+  perceptual_opt:
+    type: PerceptualLoss
+    layer_weights:
+     # before relu
+      'conv1_2': 0.1
+      'conv2_2': 0.1
+      'conv3_4': 1
+      'conv4_4': 1
+      'conv5_4': 1
+    vgg_type: vgg19
+    use_input_norm: true
+    range_norm: false
+    perceptual_weight: 1
+    style_weight: 0.0 
+    criterion: l1
+
+  gan_opt:
+    type: GANLoss
+    gan_type: hinge
+    real_label_val: 1.0
+    fake_label_val: 0.0
+    loss_weight: !!float 0.1
+
+  embeddings_opt:
+    type: MSELoss
+    loss_weight: 1.0
+    reduction: mean
+
+  net_d_iters: 1
+  net_d_init_iters: !!float 0
+
+# validation settings·
+val:
+  val_freq: !!float 1000
+  save_img: False
+
+  key_metric: lpips 
+  metrics:
+    psnr:
+      type: psnr
+      crop_border: 0
+      test_y_channel: true
+      color_space: ycbcr
+    ssim:
+      type: ssim
+      crop_border: 0
+      test_y_channel: true
+      color_space: ycbcr
+    lpips:
+      type: lpips
+      better: lower
+
+# logging settings
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 1e9
+  save_latest_freq: !!float 1e3
+  show_tf_imgs_freq: !!float 1e3
+  use_tb_logger: true
